@@ -1,6 +1,6 @@
 {
-  "name": "Tree Breeding Field Capture",
-  "short_name": "Field Capture",
+  "name": "Breeding",
+  "short_name": "Breeding",
   "description": "Offline plus tree recording and trial measurements for the Forestry Commission tree breeding database",
   "start_url": "./index.html",
   "scope": "./",

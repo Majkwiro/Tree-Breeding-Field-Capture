@@ -1,5 +1,5 @@
 // Offline cache for Field Capture. Bump VERSION whenever index.html changes.
-const VERSION = 'tbdb-field-v1';
+const VERSION = 'tbdb-field-v2';
 const FILES = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));

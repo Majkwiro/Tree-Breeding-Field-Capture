@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#1f6b45">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
-<title>Field Capture</title>
+<title>Breeding</title>
 <style>
 :root{--g:#1f6b45;--gd:#16503a;--gl:#e8f5ec;--ink:#1d2b24;--mut:#5d6b64;--line:#d5ddd8;--bg:#f4f7f5;--card:#fff;--red:#b3261e;--amb:#a15c00}
 *{box-sizing:border-box}
@@ -58,7 +58,7 @@ button.sm{padding:6px 11px;font-size:14px}
 </style>
 </head>
 <body>
-<header><div id="dot" title="online status"></div><h1 id="title">Field Capture</h1><button id="back" style="display:none">‹ Back</button></header>
+<header><div id="dot" title="online status"></div><h1 id="title">Breeding</h1><button id="back" style="display:none">‹ Back</button></header>
 <main id="app"></main>
 <nav id="nav"></nav>
 <div id="toast"></div>
@@ -170,7 +170,7 @@ function counts() {
   return {newPlus, newMeas, allMeas};
 }
 function vHome() {
-  title('Field Capture');
+  title('Breeding');
   const c = counts(), n = Object.keys(S.pkgs).length;
   $('#app').innerHTML = `
   <div class="card"><div class="grid2">
@@ -442,7 +442,7 @@ function vSettings() {
     <p class="muted">Codes are suggested as ${esc(s.prefix || 'PT')}-001, ${esc(s.prefix || 'PT')}-002 and so on. Give each officer a different prefix so two phones never use the same code.</p>
     <label>Device ID</label><input value="${esc(s.device)}" readonly>
     <button class="p" id="ss" style="width:100%;margin-top:12px">Save</button></div>
-  <div class="card"><h2>About</h2><p class="muted">Field Capture 1.0 · Forestry Commission tree breeding database. Everything is stored on this phone until you export it.</p>
+  <div class="card"><h2>About</h2><p class="muted">Breeding 1.0 · Forestry Commission tree breeding database. Everything is stored on this phone until you export it.</p>
     <p class="muted">Install: in Chrome choose the menu, then <b>Add to Home screen</b>.</p></div>`;
   $('#ss').onclick = () => {
     s.officer = $('#s_o').value.trim(); s.prefix = $('#s_p').value.trim().toUpperCase() || 'PT'; s.next = Math.max(1, parseInt($('#s_n').value) || 1);
