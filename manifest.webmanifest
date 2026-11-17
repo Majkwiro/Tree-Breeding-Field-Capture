@@ -1,0 +1,14 @@
+{
+  "name": "Tree Breeding Field Capture",
+  "short_name": "Field Capture",
+  "description": "Offline plus tree recording and trial measurements for the Forestry Commission tree breeding database",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f7f5",
+  "theme_color": "#1f6b45",
+  "icons": [
+    {"src": "icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}
+  ]
+}

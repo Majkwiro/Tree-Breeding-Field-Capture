@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f6b45">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<title>Field Capture</title>
+<style>
+:root{--g:#1f6b45;--gd:#16503a;--gl:#e8f5ec;--ink:#1d2b24;--mut:#5d6b64;--line:#d5ddd8;--bg:#f4f7f5;--card:#fff;--red:#b3261e;--amb:#a15c00}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body{padding-bottom:78px}
+header{position:sticky;top:0;z-index:5;background:var(--g);color:#fff;padding:10px 14px;display:flex;align-items:center;gap:10px}
+header h1{font-size:18px;margin:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+header button{background:rgba(255,255,255,.18);color:#fff;border:0;border-radius:8px;padding:6px 12px;font-size:15px}
+#dot{width:10px;height:10px;border-radius:50%;background:#7bd88f;flex:none}
+#dot.off{background:#f0b44c}
+main{padding:12px;max-width:760px;margin:0 auto}
+nav{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom);z-index:5}
+nav button{flex:1;border:0;background:none;padding:9px 2px 7px;font-size:12px;color:var(--mut)}
+nav button b{display:block;font-size:20px;font-weight:400}
+nav button.on{color:var(--g);font-weight:700}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin:0 0 12px}
+.card h2{font-size:16px;margin:0 0 6px}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.row>*{flex:1 1 140px}
+label{display:block;font-size:13px;font-weight:600;color:var(--mut);margin:10px 0 3px}
+input,select,textarea{width:100%;font:inherit;font-size:17px;padding:10px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink)}
+input.bad{border-color:var(--red);background:#fff4f3}
+textarea{min-height:70px}
+button.p,button.s,button.d{font:inherit;font-weight:600;border-radius:10px;padding:11px 16px;border:1px solid var(--g);cursor:pointer}
+button.p{background:var(--g);color:#fff}
+button.s{background:#fff;color:var(--g)}
+button.d{background:#fff;color:var(--red);border-color:var(--red)}
+button.sm{padding:6px 11px;font-size:14px}
+.muted{color:var(--mut);font-size:14px}
+.chip{display:inline-block;background:var(--gl);color:var(--gd);border-radius:20px;padding:2px 10px;font-size:13px;font-weight:600}
+.chip.w{background:#fdf0d8;color:var(--amb)}
+.item{display:flex;align-items:center;gap:10px;padding:11px 4px;border-bottom:1px solid var(--line)}
+.item:last-child{border-bottom:0}
+.item .t{flex:1;min-width:0}
+.item .t b{display:block}
+.seg{display:flex;gap:5px}
+.seg button{flex:1;min-width:0;font:inherit;font-size:17px;font-weight:600;padding:10px 0;border:1px solid var(--line);background:#fff;border-radius:8px;color:var(--ink)}
+.seg button.on{background:var(--g);color:#fff;border-color:var(--g)}
+.tree{border-left:5px solid var(--line)}
+.tree.done{border-left-color:var(--g)}
+.tree h3{margin:0 0 2px;font-size:16px;display:flex;justify-content:space-between;align-items:center}
+.warn{color:var(--red);font-size:13px;margin-top:3px}
+.bar{height:8px;background:var(--line);border-radius:5px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--g)}
+#toast{position:fixed;left:50%;bottom:92px;transform:translateX(-50%);background:#1d2b24;color:#fff;padding:9px 16px;border-radius:20px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:9;max-width:90%}
+#toast.on{opacity:1}
+.big{font-size:28px;font-weight:700;color:var(--g)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+</style>
+</head>
+<body>
+<header><div id="dot" title="online status"></div><h1 id="title">Field Capture</h1><button id="back" style="display:none">‹ Back</button></header>
+<main id="app"></main>
+<nav id="nav"></nav>
+<div id="toast"></div>
+
+<script>
+'use strict';
+/* ───────────────────────── storage (IndexedDB, with in-memory fallback) ───────────────────────── */
+const DB = {
+  db: null, mem: {},
+  open() {
+    return new Promise(res => {
+      try {
+        const rq = indexedDB.open('tbdb-field', 1);
+        rq.onupgradeneeded = () => rq.result.createObjectStore('kv');
+        rq.onsuccess = () => { DB.db = rq.result; res(); };
+        rq.onerror = () => res();
+      } catch (e) { res(); }
+    });
+  },
+  get(k) {
+    return new Promise(res => {
+      if (!DB.db) return res(DB.mem[k]);
+      const rq = DB.db.transaction('kv').objectStore('kv').get(k);
+      rq.onsuccess = () => res(rq.result); rq.onerror = () => res(undefined);
+    });
+  },
+  set(k, v) {
+    DB.mem[k] = v;
+    return new Promise(res => {
+      if (!DB.db) return res();
+      const tx = DB.db.transaction('kv', 'readwrite'); tx.objectStore('kv').put(v, k);
+      tx.oncomplete = () => res(); tx.onerror = () => res();
+    });
+  }
+};
+
+/* ───────────────────────── state ───────────────────────── */
+const S = {settings: {officer: '', prefix: 'PT', next: 1, device: ''}, plus: [], pkgs: {}, meas: {}, ref: {species: [], sites: []}};
+const V = {view: 'home', aid: null, plotId: null, repFilter: '', search: '', editId: null, stack: []};
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'id' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8));
+const today = () => new Date().toISOString().slice(0, 10);
+const save = k => DB.set(k, S[k]);
+function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('on'), 2200); }
+
+const STATUS = [
+  ['Alive', [[10, 'Healthy'], [20, 'Unlisted'], [21, 'Dieback – twigs'], [22, 'Dieback – major'], [23, 'Dieback – resprouted'], [24, 'Frost damage'], [25, 'Insect – defoliation'], [26, 'Insect – stem borer'], [27, 'Insect – termites'], [28, 'Disease'], [29, 'Browsed – goats'], [30, 'Browsed – cattle'], [31, 'Browsed – wildlife'], [32, 'Human damage']]],
+  ['Absent', [[40, 'Tree absent'], [41, 'Wrong species']]],
+  ['Dead', [[50, 'Cause uncertain'], [51, 'Wind'], [52, 'Fire'], [53, 'Drought'], [54, 'Frost'], [55, 'Insects – defoliation'], [56, 'Insects – stem borer'], [57, 'Insects – termites'], [58, 'Disease'], [59, 'Browsed'], [60, 'Human damage'], [61, 'Other']]]
+];
+
+/* ───────────────────────── helpers for measurements ───────────────────────── */
+const key = (plotId, tn) => plotId + ':' + tn;
+function curVals(aid, plotId, tn) {
+  const m = (S.meas[aid] || {})[key(plotId, tn)];
+  if (m) return m.values;
+  return Object.assign({}, (S.pkgs[aid].existing || {})[key(plotId, tn)] || {});
+}
+function setVal(aid, plotId, tn, code, val) {
+  const vals = Object.assign({}, curVals(aid, plotId, tn));
+  if (val === '' || val === null || val === undefined) delete vals[code]; else vals[code] = val;
+  (S.meas[aid] = S.meas[aid] || {})[key(plotId, tn)] = {values: vals, t: new Date().toISOString(), x: false};
+  save('meas');
+}
+function treesDone(aid, plot) {
+  const n = S.pkgs[aid].trial.trees_per_plot || 0; let d = 0;
+  for (let i = 1; i <= n; i++) if (Object.keys(curVals(aid, plot.id, i)).length) d++;
+  return [d, n];
+}
+function shownVars(pkg) {
+  const codes = pkg.variables.map(v => v.code);
+  return pkg.variables.filter(v => !(v.code === 'survival' && codes.includes('tree_status')));
+}
+function rangeMsg(v, val) {
+  if (val === '' || val == null || v.type !== 'real') return '';
+  const x = Number(val);
+  if (isNaN(x)) return 'Not a number';
+  if (v.min != null && x < v.min) return 'Below ' + v.min;
+  if (v.max != null && x > v.max) return 'Above ' + v.max + ' — check';
+  return '';
+}
+
+/* ───────────────────────── navigation ───────────────────────── */
+function go(view, extra) {
+  V.stack.push({view: V.view, aid: V.aid, plotId: V.plotId, editId: V.editId});
+  Object.assign(V, {view}, extra || {}); render(); window.scrollTo(0, 0);
+}
+function goTab(view) { V.stack = []; Object.assign(V, {view, editId: null}); render(); window.scrollTo(0, 0); }
+$('#back').onclick = () => { const p = V.stack.pop(); if (p) { Object.assign(V, p); render(); window.scrollTo(0, 0); } };
+
+function render() {
+  const tabs = [['home', '🏠', 'Home'], ['plus', '🌲', 'Plus trees'], ['measure', '📏', 'Measure'], ['sync', '🔄', 'Sync'], ['settings', '⚙', 'Settings']];
+  const root = ['home', 'plus', 'measure', 'sync', 'settings'];
+  const tabOf = {plusForm: 'plus', plots: 'measure', tree: 'measure'}[V.view] || V.view;
+  $('#nav').innerHTML = tabs.map(t => `<button class="${tabOf === t[0] ? 'on' : ''}" data-t="${t[0]}"><b>${t[1]}</b>${t[2]}</button>`).join('');
+  $('#nav').querySelectorAll('button').forEach(b => b.onclick = () => goTab(b.dataset.t));
+  $('#back').style.display = root.includes(V.view) ? 'none' : '';
+  const r = {home: vHome, plus: vPlus, plusForm: vPlusForm, measure: vMeasure, plots: vPlots, tree: vTree, sync: vSync, settings: vSettings}[V.view];
+  r();
+}
+function title(t) { $('#title').textContent = t; }
+
+/* ───────────────────────── Home ───────────────────────── */
+function counts() {
+  const newPlus = S.plus.filter(p => !p.x).length;
+  let newMeas = 0, allMeas = 0;
+  Object.values(S.meas).forEach(m => Object.values(m).forEach(r => { allMeas++; if (!r.x) newMeas++; }));
+  return {newPlus, newMeas, allMeas};
+}
+function vHome() {
+  title('Field Capture');
+  const c = counts(), n = Object.keys(S.pkgs).length;
+  $('#app').innerHTML = `
+  <div class="card"><div class="grid2">
+    <div><div class="big">${c.newPlus}</div><div class="muted">plus trees not yet sent</div></div>
+    <div><div class="big">${c.newMeas}</div><div class="muted">tree measurements not yet sent</div></div></div></div>
+  <div class="card"><h2>Record</h2><div class="row">
+    <button class="p" id="h1">＋ New plus tree</button>
+    <button class="p" id="h2">📏 Measure a trial${n ? '' : ' (load a package first)'}</button></div></div>
+  <div class="card"><h2>Send your data</h2>
+    <p class="muted" style="margin:0 0 8px">Nothing leaves the phone until you export. Do this when you are back in range, and keep the file as your backup.</p>
+    <button class="s" id="h3">🔄 Go to Sync</button></div>
+  <p class="muted">Works without a signal. ${S.settings.officer ? 'Recording as <b>' + esc(S.settings.officer) + '</b>.' : '<b>Set your name</b> under Settings.'}</p>`;
+  $('#h1').onclick = () => { V.editId = null; go('plusForm'); };
+  $('#h2').onclick = () => goTab('measure');
+  $('#h3').onclick = () => goTab('sync');
+}
+
+/* ───────────────────────── Plus trees ───────────────────────── */
+function nextCode() {
+  const st = S.settings; let n = st.next || 1, code;
+  do { code = (st.prefix || 'PT') + '-' + String(n).padStart(3, '0'); n++; } while (S.plus.some(p => p.tree_code === code));
+  return code;
+}
+function vPlus() {
+  title('Plus trees');
+  const list = S.plus.slice().reverse();
+  $('#app').innerHTML = `
+  <button class="p" id="np" style="width:100%;margin-bottom:12px">＋ New plus tree</button>
+  <div class="card">${list.length ? list.map(p => `
+    <div class="item" data-id="${p.id}"><div class="t"><b>${esc(p.tree_code)}</b>
+      <span class="muted">${esc(p.species || '')} ${p.collection_site ? '· ' + esc(p.collection_site) : ''}${p.latitude ? ' · GPS ✓' : ''}</span></div>
+      <span class="chip ${p.x ? '' : 'w'}">${p.x ? 'sent' : 'new'}</span></div>`).join('') : '<p class="muted">No plus trees recorded yet.</p>'}</div>`;
+  $('#np').onclick = () => { V.editId = null; go('plusForm'); };
+  $('#app').querySelectorAll('.item').forEach(i => i.onclick = () => { V.editId = i.dataset.id; go('plusForm'); });
+}
+const PF = ['tree_code', 'species', 'collection_site', 'latitude', 'longitude', 'altitude_m', 'dbh_cm', 'height_m', 'clear_bole_m', 'stem_form', 'branching_score', 'crown_class', 'collection_date', 'collector', 'notes'];
+function vPlusForm() {
+  const ex = S.plus.find(p => p.id === V.editId) || null;
+  title(ex ? 'Edit ' + ex.tree_code : 'New plus tree');
+  const d = ex || {tree_code: nextCode(), collection_date: today(), collector: S.settings.officer};
+  const seg = (name, lo, hi) => `<div class="seg" data-seg="${name}">${Array.from({length: hi - lo + 1}, (_, i) => lo + i).map(n => `<button type="button" class="${String(d[name]) === String(n) ? 'on' : ''}" data-v="${n}">${n}</button>`).join('')}</div>`;
+  $('#app').innerHTML = `
+  <div class="card">
+    <label>Tree code</label><input id="f_tree_code" value="${esc(d.tree_code)}">
+    <label>Species</label><input id="f_species" list="spl" value="${esc(d.species || '')}" placeholder="e.g. Pinus patula"><datalist id="spl">${S.ref.species.map(s => `<option value="${esc(s)}">`).join('')}</datalist>
+    <label>Collection site</label><input id="f_collection_site" list="stl" value="${esc(d.collection_site || '')}"><datalist id="stl">${S.ref.sites.map(s => `<option value="${esc(s.name)}">`).join('')}</datalist>
+  </div>
+  <div class="card"><h2>Location</h2>
+    <button class="s" id="gps" type="button" style="width:100%">📍 Capture GPS position</button>
+    <div id="gpsmsg" class="muted" style="margin:6px 0">${d.latitude ? 'Saved position: ' + esc(d.latitude) + ', ' + esc(d.longitude) : 'Stand at the tree, then tap.'}</div>
+    <div class="row"><div><label>Latitude</label><input id="f_latitude" inputmode="decimal" value="${esc(d.latitude ?? '')}"></div>
+    <div><label>Longitude</label><input id="f_longitude" inputmode="decimal" value="${esc(d.longitude ?? '')}"></div>
+    <div><label>Altitude (m)</label><input id="f_altitude_m" inputmode="decimal" value="${esc(d.altitude_m ?? '')}"></div></div></div>
+  <div class="card"><h2>Measurements</h2>
+    <div class="row"><div><label>DBH (cm)</label><input id="f_dbh_cm" inputmode="decimal" value="${esc(d.dbh_cm ?? '')}"></div>
+    <div><label>Height (m)</label><input id="f_height_m" inputmode="decimal" value="${esc(d.height_m ?? '')}"></div>
+    <div><label>Clear bole (m)</label><input id="f_clear_bole_m" inputmode="decimal" value="${esc(d.clear_bole_m ?? '')}"></div></div>
+    <label>Stem form (1 crooked, 7 straight)</label>${seg('stem_form', 1, 7)}
+    <label>Branching (1–5)</label>${seg('branching_score', 1, 5)}
+    <label>Crown class</label><div class="seg" data-seg="crown_class">${['Dominant', 'Codominant', 'Intermediate'].map(n => `<button type="button" style="font-size:14px" class="${d.crown_class === n ? 'on' : ''}" data-v="${n}">${n}</button>`).join('')}</div></div>
+  <div class="card">
+    <div class="row"><div><label>Date</label><input type="date" id="f_collection_date" value="${esc(d.collection_date || '')}"></div>
+    <div><label>Collector</label><input id="f_collector" value="${esc(d.collector || '')}"></div></div>
+    <label>Notes</label><textarea id="f_notes">${esc(d.notes || '')}</textarea></div>
+  <div class="row" style="margin-bottom:20px"><button class="p" id="sv">Save</button>${ex ? '<button class="d" id="del">Delete</button>' : ''}</div>`;
+  const state = Object.assign({}, d);
+  $('#app').querySelectorAll('.seg[data-seg]').forEach(sg => sg.querySelectorAll('button').forEach(b => b.onclick = () => {
+    const nm = sg.dataset.seg, on = b.classList.contains('on');
+    sg.querySelectorAll('button').forEach(x => x.classList.remove('on'));
+    if (on) delete state[nm]; else { b.classList.add('on'); state[nm] = b.dataset.v; }
+  }));
+  $('#gps').onclick = () => {
+    if (!navigator.geolocation) return toast('GPS not available');
+    $('#gpsmsg').textContent = 'Getting position… stay still for a few seconds';
+    navigator.geolocation.getCurrentPosition(p => {
+      $('#f_latitude').value = p.coords.latitude.toFixed(6); $('#f_longitude').value = p.coords.longitude.toFixed(6);
+      if (p.coords.altitude != null) $('#f_altitude_m').value = Math.round(p.coords.altitude);
+      $('#gpsmsg').textContent = 'Position captured, accuracy ±' + Math.round(p.coords.accuracy) + ' m';
+    }, e => { $('#gpsmsg').textContent = 'No position: ' + e.message + '. Type it in if you have it.'; },
+      {enableHighAccuracy: true, timeout: 40000, maximumAge: 0});
+  };
+  $('#sv').onclick = () => {
+    const rec = Object.assign({}, state);
+    ['tree_code', 'species', 'collection_site', 'latitude', 'longitude', 'altitude_m', 'dbh_cm', 'height_m', 'clear_bole_m', 'collection_date', 'collector', 'notes']
+      .forEach(k => { rec[k] = $('#f_' + k).value.trim(); });
+    if (!rec.tree_code) return toast('Enter a tree code');
+    if (S.plus.some(p => p.tree_code.toUpperCase() === rec.tree_code.toUpperCase() && p.id !== (ex && ex.id))) return toast('That tree code is already used on this phone');
+    for (const [k, lo, hi] of [['dbh_cm', 0, 200], ['height_m', 0, 60], ['latitude', -90, 90], ['longitude', -180, 180]])
+      if (rec[k] !== '' && (isNaN(rec[k]) || +rec[k] < lo || +rec[k] > hi)) return toast(k.replace('_', ' ') + ' looks wrong');
+    if (ex) Object.assign(ex, rec, {x: false}); else {
+      rec.id = uid(); rec.created = new Date().toISOString(); rec.x = false; S.plus.push(rec);
+      const m = /(\d+)$/.exec(rec.tree_code); if (m) S.settings.next = Math.max(S.settings.next || 1, +m[1] + 1);
+      save('settings');
+    }
+    save('plus'); toast('Saved ' + rec.tree_code); goTab('plus');
+  };
+  if (ex) $('#del').onclick = () => {
+    if (!confirm('Delete ' + ex.tree_code + ' from this phone?')) return;
+    S.plus = S.plus.filter(p => p.id !== ex.id); save('plus'); goTab('plus');
+  };
+}
+
+/* ───────────────────────── Measure ───────────────────────── */
+function vMeasure() {
+  title('Measure');
+  const ids = Object.keys(S.pkgs);
+  $('#app').innerHTML = ids.length ? `<div class="card">${ids.map(id => {
+    const p = S.pkgs[id]; let d = 0, tot = 0;
+    p.plots.forEach(pl => { const [a, b] = treesDone(id, pl); d += a; tot += b; });
+    return `<div class="item" data-id="${id}"><div class="t"><b>${esc(p.trial.code)} · ${esc(p.assessment.name || p.assessment.code)}</b>
+      <span class="muted">${esc(p.trial.site || '')} · ${p.plots.length} plots · ${d}/${tot} trees</span>
+      <div class="bar" style="margin-top:5px"><i style="width:${tot ? Math.round(100 * d / tot) : 0}%"></i></div></div></div>`;
+  }).join('')}</div>` : `<div class="card"><h2>No trial loaded</h2><p class="muted">In the database open <b>Field App</b>, download a package, send it to this phone, then load it under <b>Sync</b>.</p>
+    <button class="p" onclick="goTab('sync')">Go to Sync</button></div>`;
+  $('#app').querySelectorAll('.item').forEach(i => i.onclick = () => { V.repFilter = ''; V.search = ''; go('plots', {aid: i.dataset.id}); });
+}
+function vPlots() {
+  const pkg = S.pkgs[V.aid]; title(pkg.trial.code + ' · ' + (pkg.assessment.name || pkg.assessment.code));
+  const reps = [...new Set(pkg.plots.map(p => p.rep))].sort((a, b) => a - b);
+  let list = pkg.plots.filter(p => (V.repFilter === '' || String(p.rep) === V.repFilter) && (!V.search || (/^\d{1,3}$/.test(V.search) ? String(p.plot) === V.search : p.entry.toLowerCase().includes(V.search.toLowerCase()))));
+  $('#app').innerHTML = `
+  <div class="card"><div class="row"><div><label>Replicate</label><select id="rf"><option value="">All</option>${reps.map(r => `<option ${String(r) === V.repFilter ? 'selected' : ''}>${r}</option>`).join('')}</select></div>
+  <div><label>Plot number, or part of the entry code</label><input id="sf" value="${esc(V.search)}" inputmode="search"></div></div>
+  <p class="muted" style="margin:8px 0 0">${esc(pkg.trial.site_name || pkg.trial.site || '')} · ${pkg.trial.trees_per_plot} trees per plot · ${pkg.variables.length} measures</p></div>
+  <div class="card">${list.slice(0, 300).map(p => {
+    const [d, n] = treesDone(V.aid, p);
+    return `<div class="item" data-id="${p.id}"><div class="t"><b>Plot ${p.plot}</b><span class="muted">Rep ${p.rep}${p.block ? ' · Block ' + p.block : ''} · ${esc(p.entry || 'no entry')}${p.check ? ' · check' : ''}</span></div>
+      <span class="chip ${d === n && n ? '' : (d ? 'w' : '')}" ${d ? '' : 'style="background:#eee;color:#666"'}>${d}/${n}</span></div>`;
+  }).join('') || '<p class="muted">No plots match.</p>'}${list.length > 300 ? '<p class="muted">Showing the first 300. Filter by replicate or plot number.</p>' : ''}</div>`;
+  $('#rf').onchange = e => { V.repFilter = e.target.value; vPlots(); };
+  $('#sf').onchange = e => { V.search = e.target.value.trim(); vPlots(); };
+  $('#app').querySelectorAll('.item').forEach(i => i.onclick = () => go('tree', {plotId: +i.dataset.id}));
+}
+function fieldHtml(v, tn, val) {
+  const id = `v_${tn}_${v.code}`, name = esc(v.name) + (v.unit ? ' (' + esc(v.unit) + ')' : '');
+  if (v.type === 'status') {
+    const codes = v.options ? v.options.split(',').map(s => +s) : null;
+    const lab = {}; STATUS.forEach(g => g[1].forEach(c => lab[c[0]] = c[1]));
+    const groups = codes ? [['Codes', codes.map(c => [c, lab[c] || ''])]] : STATUS;
+    return `<label>${name}</label><select data-c="${v.code}" data-t="${tn}"><option value="">—</option>${groups.map(g => `<optgroup label="${g[0]}">${g[1].map(c => `<option value="${c[0]}" ${String(val) === String(c[0]) ? 'selected' : ''}>${c[0]} ${esc(c[1])}</option>`).join('')}</optgroup>`).join('')}</select>`;
+  }
+  if (v.type === 'boolean') return `<label>${name}</label><div class="seg" data-c="${v.code}" data-t="${tn}">${[[1, 'Alive'], [0, 'Dead']].map(b => `<button type="button" data-v="${b[0]}" class="${String(val) === String(b[0]) ? 'on' : ''}">${b[1]}</button>`).join('')}</div>`;
+  if (v.type === 'score') {
+    const lo = v.min ?? 1, hi = v.max ?? 5;
+    return `<label>${name}</label><div class="seg" data-c="${v.code}" data-t="${tn}">${Array.from({length: hi - lo + 1}, (_, i) => lo + i).map(n => `<button type="button" data-v="${n}" class="${String(val) === String(n) ? 'on' : ''}">${n}</button>`).join('')}</div>`;
+  }
+  if (v.type === 'real') return `<label>${name}</label><input id="${id}" data-c="${v.code}" data-t="${tn}" inputmode="decimal" value="${esc(val ?? '')}"><div class="warn" id="w_${id}">${esc(rangeMsg(v, val))}</div>`;
+  return `<label>${name}</label><input id="${id}" data-c="${v.code}" data-t="${tn}" value="${esc(val ?? '')}">`;
+}
+function vTree() {
+  const pkg = S.pkgs[V.aid], plot = pkg.plots.find(p => p.id === V.plotId), vars = shownVars(pkg);
+  title('Plot ' + plot.plot);
+  const n = pkg.trial.trees_per_plot, idx = pkg.plots.indexOf(plot);
+  let html = `<div class="card"><b>Plot ${plot.plot}</b> · Rep ${plot.rep}${plot.block ? ' · Block ' + plot.block : ''}<br><span class="muted">Entry ${esc(plot.entry || '—')}${plot.check ? ' (check)' : ''}</span>
+    <div class="row" style="margin-top:8px"><button class="s sm" id="pv" ${idx ? '' : 'disabled'}>‹ Plot ${idx ? pkg.plots[idx - 1].plot : ''}</button>
+    <button class="s sm" id="nx" ${idx < pkg.plots.length - 1 ? '' : 'disabled'}>Plot ${idx < pkg.plots.length - 1 ? pkg.plots[idx + 1].plot : ''} ›</button></div>
+    ${pkg.variables.some(v => v.code === 'tree_status') ? '<button class="s sm" id="allh" style="width:100%;margin-top:8px">All empty trees: 10 Healthy</button>' : ''}</div>`;
+  for (let t = 1; t <= n; t++) {
+    const vals = curVals(V.aid, plot.id, t), done = Object.keys(vals).length > 0;
+    html += `<div class="card tree ${done ? 'done' : ''}" id="tc${t}"><h3>Tree ${t}<button class="s sm" data-clr="${t}" type="button">Clear</button></h3>
+      ${vars.map(v => fieldHtml(v, t, vals[v.code])).join('')}</div>`;
+  }
+  $('#app').innerHTML = html;
+  const mark = t => { const done = Object.keys(curVals(V.aid, plot.id, t)).length > 0; $('#tc' + t).classList.toggle('done', done); };
+  $('#app').querySelectorAll('input[data-c]').forEach(inp => inp.oninput = () => {
+    const v = pkg.variables.find(x => x.code === inp.dataset.c), msg = rangeMsg(v, inp.value.trim());
+    const w = $('#w_' + inp.id); if (w) w.textContent = msg; inp.classList.toggle('bad', !!msg);
+    setVal(V.aid, plot.id, +inp.dataset.t, v.code, v.type === 'real' ? (inp.value.trim() === '' || isNaN(inp.value) ? '' : +inp.value) : inp.value.trim());
+    mark(+inp.dataset.t);
+  });
+  $('#app').querySelectorAll('select[data-c]').forEach(s => s.onchange = () => { setVal(V.aid, plot.id, +s.dataset.t, s.dataset.c, s.value === '' ? '' : +s.value); mark(+s.dataset.t); });
+  $('#app').querySelectorAll('.seg[data-c]').forEach(sg => sg.querySelectorAll('button').forEach(b => b.onclick = () => {
+    const on = b.classList.contains('on'); sg.querySelectorAll('button').forEach(x => x.classList.remove('on'));
+    if (!on) b.classList.add('on');
+    setVal(V.aid, plot.id, +sg.dataset.t, sg.dataset.c, on ? '' : +b.dataset.v); mark(+sg.dataset.t);
+  }));
+  $('#app').querySelectorAll('[data-clr]').forEach(b => b.onclick = () => {
+    if (!confirm('Clear all values for tree ' + b.dataset.clr + '?')) return;
+    (S.meas[V.aid] = S.meas[V.aid] || {})[key(plot.id, +b.dataset.clr)] = {values: {}, t: new Date().toISOString(), x: false}; save('meas'); vTree();
+  });
+  if ($('#allh')) $('#allh').onclick = () => {
+    for (let t = 1; t <= n; t++) if (!Object.keys(curVals(V.aid, plot.id, t)).length) setVal(V.aid, plot.id, t, 'tree_status', 10);
+    vTree(); toast('Empty trees set to 10');
+  };
+  $('#pv').onclick = () => { V.plotId = pkg.plots[idx - 1].id; vTree(); window.scrollTo(0, 0); };
+  $('#nx').onclick = () => { V.plotId = pkg.plots[idx + 1].id; vTree(); window.scrollTo(0, 0); };
+}
+
+/* ───────────────────────── Sync ───────────────────────── */
+function buildExport(all) {
+  const out = {type: 'tbdb-field-data', version: 1, device: S.settings.device, officer: S.settings.officer, exported: new Date().toISOString(), plus_trees: [], measurements: []};
+  S.plus.forEach(p => { if (all || !p.x) { const r = {}; PF.forEach(k => { if (p[k] !== undefined && p[k] !== '') r[k] = p[k]; }); out.plus_trees.push(r); } });
+  Object.keys(S.meas).forEach(aid => Object.keys(S.meas[aid]).forEach(k => {
+    const m = S.meas[aid][k]; if (!(all || !m.x)) return;
+    const [plotId, tn] = k.split(':').map(Number); out.measurements.push({assessment_id: +aid, plot_id: plotId, tree_number: tn, values: m.values, recorded: m.t});
+  }));
+  return out;
+}
+function markSent(all) {
+  S.plus.forEach(p => p.x = true);
+  Object.keys(S.meas).forEach(a => Object.keys(S.meas[a]).forEach(k => S.meas[a][k].x = true));
+  save('plus'); save('meas');
+}
+function fileName(ext) { return 'field_' + (S.settings.officer || 'phone').replace(/\W+/g, '_') + '_' + new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '') + ext; }
+async function deliver(blob, name) {
+  const file = new File([blob], name, {type: blob.type});
+  if (navigator.canShare && navigator.canShare({files: [file]})) { try { await navigator.share({files: [file], title: name}); return true; } catch (e) { if (e.name === 'AbortError') return false; } }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000); return true;
+}
+function vSync() {
+  title('Sync');
+  const c = counts();
+  $('#app').innerHTML = `
+  <div class="card"><h2>Send data to the office</h2>
+    <p class="muted" style="margin:0 0 8px">${c.newPlus} plus trees and ${c.newMeas} tree measurements are waiting.</p>
+    <button class="p" id="ex" style="width:100%">📤 Export data file</button>
+    <p class="muted">Share it by WhatsApp, e-mail or USB. In the database open <b>Field App</b>, then <b>Load data</b>. If the phone offers a share menu, choose WhatsApp or Gmail. Otherwise the file saves in Downloads.</p>
+    <div class="row"><button class="s sm" id="exa">Export everything again</button><button class="s sm" id="csv">Measurements as CSV</button></div></div>
+  <div class="card"><h2>Load a package or list</h2>
+    <p class="muted" style="margin:0 0 8px">Choose the package file downloaded from the database (ends in <code>.package.json</code>). The species and site lists come with it.</p>
+    <input type="file" id="pk" accept=".json,application/json" multiple></div>
+  <div class="card"><h2>Trials on this phone</h2>${Object.keys(S.pkgs).map(id => { const p = S.pkgs[id];
+    return `<div class="item"><div class="t"><b>${esc(p.trial.code)} · ${esc(p.assessment.name || p.assessment.code)}</b><span class="muted">loaded ${esc((p.created || '').slice(0, 10))}</span></div><button class="d sm" data-rm="${id}">Remove</button></div>`; }).join('') || '<p class="muted">None.</p>'}</div>`;
+  $('#ex').onclick = async () => {
+    const d = buildExport(false);
+    if (!d.plus_trees.length && !d.measurements.length) return toast('Nothing new to send');
+    if (await deliver(new Blob([JSON.stringify(d)], {type: 'application/json'}), fileName('.tbdb.json'))) {
+      if (confirm('Was the file shared or saved successfully? OK marks these records as sent.')) { markSent(); toast('Marked as sent'); vSync(); }
+    }
+  };
+  $('#exa').onclick = () => deliver(new Blob([JSON.stringify(buildExport(true))], {type: 'application/json'}), fileName('.tbdb.json'));
+  $('#csv').onclick = () => {
+    const rows = [['trial', 'assessment', 'rep', 'block', 'plot', 'entry', 'tree', 'variable', 'value']];
+    Object.keys(S.meas).forEach(aid => { const p = S.pkgs[aid]; if (!p) return;
+      Object.keys(S.meas[aid]).forEach(k => { const [pid, tn] = k.split(':').map(Number), pl = p.plots.find(x => x.id === pid) || {};
+        Object.entries(S.meas[aid][k].values).forEach(([vc, val]) => rows.push([p.trial.code, p.assessment.code, pl.rep, pl.block, pl.plot, pl.entry, tn, vc, val])); }); });
+    deliver(new Blob([rows.map(r => r.map(x => '"' + String(x ?? '').replace(/"/g, '""') + '"').join(',')).join('\n')], {type: 'text/csv'}), fileName('.csv'));
+  };
+  $('#pk').onchange = async e => {
+    let ok = 0;
+    for (const f of e.target.files) {
+      try {
+        const d = JSON.parse(await f.text());
+        if (d.type === 'tbdb-package') {
+          const id = String(d.assessment.id);
+          if (S.pkgs[id] && !confirm('Package ' + d.trial.code + ' is already on this phone. Replace it? Values you recorded stay.')) continue;
+          S.pkgs[id] = d; ok++;
+        } else if (d.type !== 'tbdb-reference') throw new Error('not a package');
+        if (d.reference) S.ref = d.reference;
+      } catch (err) { toast(f.name + ': not a package file'); }
+    }
+    if (ok || e.target.files.length) { save('pkgs'); save('ref'); toast(ok ? ok + ' package(s) loaded' : 'List loaded'); vSync(); }
+  };
+  $('#app').querySelectorAll('[data-rm]').forEach(b => b.onclick = () => {
+    const id = b.dataset.rm, unsent = Object.values(S.meas[id] || {}).filter(m => !m.x).length;
+    if (!confirm('Remove this trial from the phone?' + (unsent ? '\n\n' + unsent + ' measurements have NOT been sent. Export first.' : ''))) return;
+    delete S.pkgs[id]; delete S.meas[id]; save('pkgs'); save('meas'); vSync();
+  });
+}
+
+/* ───────────────────────── Settings ───────────────────────── */
+function vSettings() {
+  title('Settings'); const s = S.settings;
+  $('#app').innerHTML = `<div class="card">
+    <label>Your name</label><input id="s_o" value="${esc(s.officer)}" placeholder="e.g. P. Mutete">
+    <div class="row"><div><label>Plus tree code prefix</label><input id="s_p" value="${esc(s.prefix)}"></div>
+    <div><label>Next number</label><input id="s_n" inputmode="numeric" value="${esc(s.next)}"></div></div>
+    <p class="muted">Codes are suggested as ${esc(s.prefix || 'PT')}-001, ${esc(s.prefix || 'PT')}-002 and so on. Give each officer a different prefix so two phones never use the same code.</p>
+    <label>Device ID</label><input value="${esc(s.device)}" readonly>
+    <button class="p" id="ss" style="width:100%;margin-top:12px">Save</button></div>
+  <div class="card"><h2>About</h2><p class="muted">Field Capture 1.0 · Forestry Commission tree breeding database. Everything is stored on this phone until you export it.</p>
+    <p class="muted">Install: in Chrome choose the menu, then <b>Add to Home screen</b>.</p></div>`;
+  $('#ss').onclick = () => {
+    s.officer = $('#s_o').value.trim(); s.prefix = $('#s_p').value.trim().toUpperCase() || 'PT'; s.next = Math.max(1, parseInt($('#s_n').value) || 1);
+    save('settings'); toast('Saved');
+  };
+}
+
+/* ───────────────────────── start ───────────────────────── */
+function net() { $('#dot').classList.toggle('off', !navigator.onLine); $('#dot').title = navigator.onLine ? 'online' : 'offline'; }
+addEventListener('online', net); addEventListener('offline', net);
+(async function init() {
+  await DB.open();
+  for (const k of ['settings', 'plus', 'pkgs', 'meas', 'ref']) { const v = await DB.get(k); if (v !== undefined) S[k] = v; }
+  if (!S.settings.device) { S.settings.device = uid().slice(0, 8); save('settings'); }
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  net(); render();
+})();
+</script>
+</body>
+</html>
